@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>피자 타이쿤: 약분과 통분 편</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM (v18) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        body {
+            user-select: none; /* 드래그 방지 */
+            -webkit-user-select: none;
+            overflow: hidden; /* 스크롤 방지 */
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #d35400;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+        input[type=range]::-moz-range-thumb {
+            width: 24px;
+            height: 24px;
+            background: #d35400;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 3px solid #fff;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body class="bg-stone-900 text-stone-800 font-sans">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- 유틸리티 함수 ---
+        const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+
+        // 분수 컴포넌트
+        const Fraction = ({ n, d }) => (
+          <span className="inline-flex flex-col items-center align-middle mx-1 text-base sm:text-lg font-bold text-stone-800">
+            <span className="border-b-2 border-stone-700 leading-none px-1">{n}</span>
+            <span className="leading-none px-1">{d}</span>
+          </span>
+        );
+
+        const PIZZA_NAMES = { pepperoni: "페퍼로니", cheese: "치즈", bulgogi: "불고기" };
+        const DRINK_NAMES = { none: "음료 없음", cola: "콜라", cider: "사이다" };
+
+        const PIZZA_PRICES = { cheese: 100, pepperoni: 120, bulgogi: 150 };
+        const DRINK_PRICES = { none: 0, cola: 30, cider: 30 };
+
+        // --- 상점 아이템 ---
+        const SHOP_ITEMS = [
+          { id: 'exp', name: "경험치 보상", price: 500, icon: "✨", desc: "1개당 500 달러 (반복 구매 가능)" },
+          { id: 'silver', name: "은화", price: 3000, icon: "🪙", desc: "반짝이는 은화 (반복 구매 가능)" }
+        ];
+
+        // --- 5일차 시스템 설정 ---
+        const DAY_CONFIGS = [
+          { day: 1, goal: 6, initialTime: null, timeBonus: 0, useDrink: false, mathTier: 'tier1' },
+          { day: 2, goal: 6, initialTime: 30, timeBonus: 15, useDrink: false, mathTier: 'tier1' },
+          { day: 3, goal: 10, initialTime: 80, timeBonus: 15, useDrink: true, mathTier: 'tier2' },
+          { day: 4, goal: 10, initialTime: 90, timeBonus: 20, useDrink: true, mathTier: 'tier3' },
+          { day: 5, goal: Infinity, initialTime: 60, timeBonus: 5, useDrink: true, mathTier: 'all' },
+        ];
+
+        // --- 손님 데이터 (17종) ---
+        const CUSTOMERS = [
+          { img: "https://i.imgur.com/vPJtjWU.png", msg: "여~ 여기 인간들을 이런 걸 먹는다면서? 하나 줘봐!" },
+          { img: "https://i.imgur.com/RSyUgIv.png", msg: "삐-비빅 삐-비빅\n(피자를 내놔라 인간..)" },
+          { img: "https://i.imgur.com/ASVOQzL.png", msg: "나 엄청 귀엽죠?! 피자 공짜로 주면 안돼용?!@" },
+          { img: "https://i.imgur.com/zsUPBXh.png", msg: "ZZZZ... ZZZZz...\n(대낮인데 졸고 있다)" },
+          { img: "https://i.imgur.com/XPzVsYZ.png", msg: "오우 마이깠! 아이 러브 피자! 캔 아이 오더?" },
+          { img: "https://i.imgur.com/LtT6zr5.png", msg: "아니~~~ 내 영역전개가 왜 안통하냐고~~~\n피자 좀 줄래?" },
+          { img: "https://i.imgur.com/Aq3OKr9.png", msg: "부엉? 엉? 끼야야야\n(대충 피자를 달라는 것 같다)" },
+          { img: "https://i.imgur.com/9xnXkEj.png", msg: "아이고 허리야.. 허리에 좋은 피자 좀 줘봐라.." },
+          { img: "https://i.imgur.com/O6zCxEf.png", msg: "이봐 자네, 이번 미국 대통령에 대해서 어떻게 생각해?" },
+          { img: "https://i.imgur.com/9zNmLow.png", msg: "나 피자 시켜도 돼? 지금 말하면 돼?" },
+          { img: "https://i.imgur.com/gDTTmTZ.png", msg: "아니...아니!!! 아니...!\n피자 달라구요..." },
+          { img: "https://i.imgur.com/En8Ryh2.png", msg: "흠흠, 우리 쿠키나라도 피자를 먹소.\n그렇게 쳐다보지 마시오." },
+          { img: "https://i.imgur.com/TCQCuUX.png", msg: "이봐~ 덴지군~ 피자 좀 줘~\n덴지가 아니라고? 어쩌라고!!" },
+          { img: "https://i.imgur.com/EQ3lEj4.png", msg: "헤헤 나 발 아팡..\n피자 좀 우리 도마뱀 줄거야" },
+          { img: "https://i.imgur.com/erLd7ib.png", msg: "호호호 솔다왕국 3번째 왕녀 다솔...\n(말이 길다)" },
+          { img: "https://i.imgur.com/cBt317I.png", msg: "(손님은 그저 가게의 메뉴판에 손가락을 올려놨다.. 이건가?)" },
+          { img: "https://i.imgur.com/yMeElZ0.png", msg: "어.. 피자.. 네.. 주세요.. ㅋㅋㅋ.." }
+        ];
+
+        // --- 난이도별 수학 문제 풀 ---
+        const MATH_POOLS = {
+          tier1: [ 
+            { fractions: [{n: 2, d: 4}], optimalD: 2 }, { fractions: [{n: 4, d: 12}], optimalD: 3 },
+            { fractions: [{n: 6, d: 8}], optimalD: 4 }, { fractions: [{n: 3, d: 9}], optimalD: 3 },
+            { fractions: [{n: 4, d: 6}], optimalD: 3 }, { fractions: [{n: 8, d: 16}], optimalD: 2 },
+          ],
+          tier2: [ 
+            { fractions: [{n: 1, d: 2}, {n: 1, d: 4}], optimalD: 4 }, { fractions: [{n: 1, d: 3}, {n: 2, d: 6}], optimalD: 6 },
+            { fractions: [{n: 1, d: 2}, {n: 1, d: 6}], optimalD: 6 }, { fractions: [{n: 1, d: 5}, {n: 3, d: 10}], optimalD: 2 },
+            { fractions: [{n: 6, d: 18}], optimalD: 3 }, 
+          ],
+          tier3: [ 
+            { fractions: [{n: 1, d: 2}, {n: 1, d: 3}], optimalD: 6 }, { fractions: [{n: 1, d: 4}, {n: 1, d: 3}], optimalD: 12 },
+            { fractions: [{n: 2, d: 3}, {n: 1, d: 6}], optimalD: 6 }, { fractions: [{n: 1, d: 2}, {n: 2, d: 5}], optimalD: 10 },
+            { fractions: [{n: 3, d: 8}, {n: 1, d: 6}], optimalD: 24 },
+          ]
+        };
+
+        // 동적 주문 생성기
+        const generateOrder = (dayConfig) => {
+          const customer = CUSTOMERS[Math.floor(Math.random() * CUSTOMERS.length)];
+          const pizzaTypes = ['pepperoni', 'cheese', 'bulgogi'];
+          const randomPizza = pizzaTypes[Math.floor(Math.random() * pizzaTypes.length)];
+
+          let drinkType = 'none';
+          if (dayConfig.useDrink) {
+            const r = Math.random();
+            if (r < 0.3) drinkType = 'cola';
+            else if (r < 0.6) drinkType = 'cider';
+          }
+
+          let pool = [];
+          if (dayConfig.mathTier === 'all') {
+            pool = [...MATH_POOLS.tier1, ...MATH_POOLS.tier2, ...MATH_POOLS.tier3];
+          } else {
+            pool = MATH_POOLS[dayConfig.mathTier];
+          }
+
+          const randomMath = pool[Math.floor(Math.random() * pool.length)];
+
+          let finalMsg = customer.msg;
+          if (drinkType === 'cola') finalMsg += "\n아, 톡 쏘는 [콜라]도 같이 줘!";
+          if (drinkType === 'cider') finalMsg += "\n음.. 시원한 [사이다]도 주시오.";
+
+          return {
+            img: customer.img,
+            msg: finalMsg,
+            pizzaType: randomPizza,
+            drinkType: drinkType,
+            fractions: randomMath.fractions,
+            optimalD: randomMath.optimalD
+          };
+        };
+
+        // --- SVG 에셋 ---
+        const TrashCan = ({ isAnimating }) => (
+          <svg width="45" height="60" viewBox="0 0 60 80" className={`transition-transform duration-300 ${isAnimating ? 'scale-110 -rotate-3' : ''}`}>
+            <rect x="10" y="20" width="40" height="55" rx="5" fill="#e74c3c" />
+            <path d="M 5 20 L 55 20 L 52 75 Q 50 80 45 80 L 15 80 Q 10 80 8 75 Z" fill="#c0392b" />
+            <rect x="5" y="15" width="50" height="8" rx="3" fill="#bdc3c7" />
+            <rect x="22" y="10" width="16" height="5" rx="2" fill="#bdc3c7" />
+            <line x1="20" y1="30" x2="20" y2="70" stroke="#a93226" strokeWidth="3" strokeLinecap="round" />
+            <line x1="30" y1="30" x2="30" y2="70" stroke="#a93226" strokeWidth="3" strokeLinecap="round" />
+            <line x1="40" y1="30" x2="40" y2="70" stroke="#a93226" strokeWidth="3" strokeLinecap="round" />
+            <text x="30" y="55" fontSize="10" fill="#fff" textAnchor="middle" opacity="0.6" transform="rotate(-90 30 55)">WASTE</text>
+          </svg>
+        );
+
+        const PizzaBox = () => (
+          <svg width="180" height="180" viewBox="0 0 200 200">
+            <rect x="10" y="10" width="180" height="180" fill="#d4b58e" rx="10" />
+            <rect x="15" y="15" width="170" height="170" fill="#eaddc5" rx="5" />
+            <circle cx="100" cy="100" r="80" fill="#fff" opacity="0.4" />
+            <circle cx="100" cy="100" r="70" fill="none" stroke="#d4b58e" strokeWidth="1" strokeDasharray="5,5" />
+          </svg>
+        );
+
+        const DrinkVisual = ({ type }) => {
+          if (type === 'none') return null;
+          const isCola = type === 'cola';
+          const color = isCola ? '#c0392b' : '#27ae60';
+          const label = isCola ? 'COLA' : 'CIDER';
+          
+          return (
+            <div className="absolute -right-8 sm:-right-16 bottom-6 w-12 h-16 sm:w-16 sm:h-24 animate-in zoom-in duration-300 drop-shadow-xl z-20 pointer-events-none">
+              <svg viewBox="0 0 40 60" className="w-full h-full">
+                <line x1="20" y1="15" x2="28" y2="3" stroke="#fff" strokeWidth="1.5" />
+                <line x1="28" y1="3" x2="35" y2="3" stroke="#fff" strokeWidth="1.5" />
+                <path d="M 10 15 L 30 15 L 26 55 L 14 55 Z" fill={color} stroke="#333" strokeWidth="1" strokeLinejoin="round" />
+                <path d="M 8 13 C 8 10, 32 10, 32 13 L 32 15 L 8 15 Z" fill="#ecf0f1" stroke="#333" strokeWidth="1" />
+                <text x="20" y="38" fill="#fff" fontSize="6" fontWeight="900" textAnchor="middle" transform="rotate(-90 20 35)">{label}</text>
+              </svg>
+            </div>
+          );
+        };
+
+        function App() {
+          const [gameState, setGameState] = useState('menu'); 
+          const [currentDay, setCurrentDay] = useState(1);
+          const [money, setMoney] = useState(0);
+          
+          const [servedToday, setServedToday] = useState(0);
+          const [totalServed, setTotalServed] = useState(0);
+          const [timeLeft, setTimeLeft] = useState(null);
+          
+          const [currentOrder, setCurrentOrder] = useState(null);
+          
+          const [selectedPizza, setSelectedPizza] = useState('pepperoni');
+          const [selectedDrink, setSelectedDrink] = useState('none');
+          const [cutSlices, setCutSlices] = useState(1); 
+          const [selectedIndices, setSelectedIndices] = useState(new Set()); 
+          
+          const [feedback, setFeedback] = useState(null);
+          const [trashAnimating, setTrashAnimating] = useState(false);
+
+          // 상점 시스템용 상태
+          const [inventory, setInventory] = useState({ exp: 0, silver: 0 });
+          const [purchasedItem, setPurchasedItem] = useState(null);
+
+          const dayConfig = DAY_CONFIGS[currentDay - 1] || DAY_CONFIGS[DAY_CONFIGS.length - 1];
+
+          // 타이머 로직
+          useEffect(() => {
+            let timerId;
+            if (gameState === 'playing' && timeLeft !== null && timeLeft > 0) {
+              timerId = setInterval(() => {
+                setTimeLeft(prev => {
+                  if (prev <= 1) {
+                    handleGameOver();
+                    return 0;
+                  }
+                  return prev - 1;
+                });
+              }, 1000);
+            }
+            return () => clearInterval(timerId);
+          }, [gameState, timeLeft]);
+
+          const startGame = () => {
+            setInventory({ exp: 0, silver: 0 });
+            setTotalServed(0);
+            setMoney(0);
+            startDay(1);
+          };
+
+          const startDay = (dayNum) => {
+            const config = DAY_CONFIGS[dayNum - 1] || DAY_CONFIGS[DAY_CONFIGS.length - 1];
+            setCurrentDay(dayNum);
+            setServedToday(0);
+            setTimeLeft(config.initialTime);
+            setCurrentOrder(generateOrder(config));
+            resetPizza();
+            setGameState('playing');
+            setFeedback(null);
+          };
+
+          const nextOrderOrDay = () => {
+            const config = DAY_CONFIGS[currentDay - 1];
+            const newServedToday = servedToday + 1;
+            setServedToday(newServedToday);
+            setTotalServed(prev => prev + 1);
+
+            if (newServedToday >= config.goal) {
+              setGameState('dayEnd');
+            } else {
+              setCurrentOrder(generateOrder(config));
+              resetPizza();
+              setGameState('playing');
+              setFeedback(null);
+            }
+          };
+
+          const handleGameOver = () => {
+            setGameState('gameOver');
+          };
+
+          const resetPizza = () => {
+            setCutSlices(1);
+            setSelectedIndices(new Set());
+            setSelectedPizza('pepperoni');
+            setSelectedDrink('none');
+          };
+
+          const handleSliceChange = (val) => {
+            let num = parseInt(val);
+            if (isNaN(num)) num = 1;
+            if (num < 1) num = 1;
+            if (num > 36) num = 36;
+            setCutSlices(num);
+            setSelectedIndices(new Set()); 
+          };
+
+          const toggleSlice = (idx) => {
+            const newSet = new Set(selectedIndices);
+            if (newSet.has(idx)) {
+              newSet.delete(idx);
+            } else {
+              newSet.add(idx);
+            }
+            setSelectedIndices(newSet);
+          };
+
+          // 공통 패널티 처리 함수 (일차 수 * 10 만큼 패널티 스케일링)
+          const currentPenalty = currentDay * 10;
+          
+          const triggerPenalty = (title, desc) => {
+            setMoney(m => m - currentPenalty);
+            setFeedback({
+              success: false,
+              title,
+              desc,
+              penaltyValue: currentPenalty
+            });
+            setGameState('feedback');
+          };
+
+          const handleServe = () => {
+            if (selectedIndices.size === 0) {
+              alert("최소 한 조각은 상자에 담아야 합니다!");
+              return;
+            }
+
+            // 1. 음료 틀림 패널티
+            if (dayConfig.useDrink && selectedDrink !== currentOrder.drinkType) {
+              triggerPenalty(
+                "음료가 틀렸어요!", 
+                currentOrder.drinkType === 'none' 
+                  ? "손님은 음료를 시키지 않았습니다!" 
+                  : `손님은 [${DRINK_NAMES[currentOrder.drinkType]}]를 원했습니다!`
+              );
+              return;
+            }
+
+            // 2. 피자 종류 틀림 패널티
+            if (selectedPizza !== currentOrder.pizzaType) {
+              triggerPenalty(
+                "피자 종류가 틀렸어요!", 
+                `손님은 [${PIZZA_NAMES[currentOrder.pizzaType]}] 피자를 주문했습니다!`
+              );
+              return;
+            }
+
+            // 3. 피자 양(분수) 틀림 패널티
+            const playerValue = selectedIndices.size / cutSlices;
+            let targetValue = 0;
+            currentOrder.fractions.forEach(f => targetValue += (f.n / f.d));
+
+            if (Math.abs(playerValue - targetValue) > 0.0001) {
+              triggerPenalty(
+                "피자 양이 틀렸어요!", 
+                "손님이 주문한 피자 조각의 양(비율)과 다릅니다. 다시 계산해보세요!"
+              );
+              return;
+            }
+
+            // 성공 처리
+            const isOptimal = cutSlices === currentOrder.optimalD;
+            const wasted = cutSlices - selectedIndices.size;
+            
+            const pizzaPrice = Math.round(targetValue * PIZZA_PRICES[currentOrder.pizzaType]);
+            const drinkPrice = DRINK_PRICES[currentOrder.drinkType];
+            const basePrice = pizzaPrice + drinkPrice;
+            
+            let tip = 0;
+            if (isOptimal) {
+              tip = 50; 
+            } else {
+              const extraCuts = cutSlices - currentOrder.optimalD;
+              tip = -(extraCuts * 10); 
+            }
+
+            const totalEarned = basePrice + tip;
+
+            if (wasted > 0) setTrashAnimating(true);
+
+            let addedTime = 0;
+            if (timeLeft !== null) {
+              addedTime = dayConfig.timeBonus;
+              setTimeLeft(prev => Math.min(prev + addedTime, 180)); 
+            }
+
+            setTimeout(() => {
+              setTrashAnimating(false);
+              setMoney(m => m + totalEarned);
+              
+              setFeedback({
+                success: true,
+                optimal: isOptimal,
+                title: isOptimal ? "완벽해요! (최적 분수)" : "양은 맞지만... 낭비 발생!",
+                desc: isOptimal 
+                  ? `가장 적은 횟수(${currentOrder.optimalD}조각)로 정확하게 나누어 낭비 없이 서빙했습니다!` 
+                  : `주문한 양은 맞췄지만, ${currentOrder.optimalD}조각으로 나누면 더 깔끔했어요. 불필요한 칼질로 팁이 깎였습니다.`,
+                receipt: { basePrice, tip, totalEarned, addedTime }
+              });
+              setGameState('feedback');
+            }, 800);
+          };
+
+          const handleBuyItem = (item) => {
+            if (money >= item.price) {
+              setMoney(m => m - item.price);
+              setInventory(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }));
+              setPurchasedItem(item);
+            }
+          };
+
+          const renderPizzaSlices = (isBox) => {
+            const radius = 80;
+            const cx = 100;
+            const cy = 100;
+            const slices = [];
+
+            const baseColor = selectedPizza === 'cheese' ? '#f4d03f' : '#f1c40f';
+            const crustColor = selectedPizza === 'cheese' ? '#d35400' : '#e67e22';
+
+            const getTopping = (px, py, radius, key) => {
+              if (selectedPizza === 'pepperoni') {
+                return <circle key={key} cx={px} cy={py} r={radius * 0.15} fill="#c0392b" />;
+              } else if (selectedPizza === 'cheese') {
+                return <path key={key} d={`M ${px-10} ${py} Q ${px} ${py-10} ${px+10} ${py}`} stroke="#f39c12" strokeWidth="3" fill="none" />;
+              } else if (selectedPizza === 'bulgogi') {
+                return (
+                  <g key={key}>
+                    <rect x={px-6} y={py-6} width={12} height={10} rx={3} fill="#5c4033" />
+                    <circle cx={px+6} cy={py-2} r={4} fill="#27ae60" />
+                  </g>
+                );
+              }
+              return null;
+            };
+
+            if (cutSlices === 1) {
+              if (isBox && !selectedIndices.has(0)) return null;
+              if (!isBox && selectedIndices.has(0)) return null;
+              return (
+                <g onClick={() => !isBox && toggleSlice(0)} className={!isBox ? "cursor-pointer" : ""}>
+                  <circle cx={cx} cy={cy} r={radius} fill={baseColor} stroke={crustColor} strokeWidth="8" />
+                  {getTopping(70, 70, radius, 't1')}
+                  {getTopping(130, 80, radius, 't2')}
+                  {getTopping(100, 130, radius, 't3')}
+                </g>
+              );
+            }
+
+            const angleStep = (Math.PI * 2) / cutSlices;
+            for (let i = 0; i < cutSlices; i++) {
+              const isSelected = selectedIndices.has(i);
+              if (isBox && !isSelected) continue;
+              if (!isBox && isSelected) continue;
+
+              const startAngle = i * angleStep;
+              const endAngle = (i + 1) * angleStep;
+              const x1 = cx + radius * Math.cos(startAngle);
+              const y1 = cy + radius * Math.sin(startAngle);
+              const x2 = cx + radius * Math.cos(endAngle);
+              const y2 = cy + radius * Math.sin(endAngle);
+              const largeArcFlag = endAngle - startAngle > Math.PI ? 1 : 0;
+              const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
+              
+              const midAngle = startAngle + (angleStep / 2);
+              const px = cx + (radius * 0.6) * Math.cos(midAngle);
+              const py = cy + (radius * 0.6) * Math.sin(midAngle);
+
+              slices.push(
+                <g key={i} onClick={() => !isBox && toggleSlice(i)} className={!isBox ? "cursor-pointer hover:opacity-80 transition-opacity" : ""}>
+                  <path d={pathData} fill={baseColor} stroke="#d35400" strokeWidth="3" strokeLinejoin="round" />
+                  {cutSlices <= 16 && getTopping(px, py, radius, `top-${i}`)}
+                </g>
+              );
+            }
+            return slices;
+          };
+
+          // --- 화면 렌더링 ---
+          if (gameState === 'menu') {
+            return (
+              <div className="h-screen bg-stone-900 flex flex-col items-center justify-center font-sans p-4 text-white overflow-hidden">
+                <div className="bg-stone-800 p-8 rounded-2xl shadow-2xl max-w-lg w-full text-center border-4 border-orange-600">
+                  <h1 className="text-4xl font-extrabold text-orange-500 mb-2">🍕 피자 타이쿤</h1>
+                  <h2 className="text-xl text-yellow-400 mb-6 font-semibold">~ 약분과 통분 편 ~</h2>
+                  <div className="bg-stone-700 p-4 rounded-xl mb-6 text-sm">
+                    <h3 className="text-orange-300 font-bold mb-2">📅 5일간의 피자 가게 운영</h3>
+                    <ul className="text-left space-y-1 mb-2">
+                      <li>• <span className="text-yellow-300">1일차</span>: 단일 분수 (약분 연습)</li>
+                      <li>• <span className="text-yellow-300">2일차</span>: <span className="text-red-400">타이머 등장!</span></li>
+                      <li>• <span className="text-yellow-300">3일차</span>: <span className="text-blue-300">음료 추가</span> & 쉬운 통분</li>
+                      <li>• <span className="text-yellow-300">4일차</span>: 본격적인 통분 미션</li>
+                      <li>• <span className="text-yellow-300">5일차</span>: 무한 모드 (버티기)</li>
+                    </ul>
+                    <p className="text-xs text-stone-400 text-red-300 mt-2">오주문 시 라운드에 비례한 패널티(-$10 ~ -$50) 발생! 주의하세요!</p>
+                  </div>
+                  <button onClick={startGame} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 rounded-xl shadow-[0_6px_0_#9a3412] active:translate-y-[6px] transition-all text-xl">
+                    가게 오픈하기
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // 상점 렌더링
+          if (gameState === 'shop') {
+            return (
+              <div className="h-screen bg-[#2c3e50] flex flex-col items-center justify-center font-sans p-4 text-white relative">
+                <div className="bg-stone-800 p-8 rounded-3xl shadow-2xl max-w-2xl w-full text-center border-4 border-yellow-500 animate-in zoom-in duration-500 flex flex-col h-[90vh]">
+                  <h1 className="text-4xl font-black text-yellow-400 mb-2">🏆 학민 정부 보상 상점</h1>
+                  <p className="text-stone-300 mb-4">지금까지 땀 흘려 번 돈으로 보상을 구매하세요!</p>
+                  
+                  <div className="bg-stone-900 p-4 rounded-xl mb-6 flex justify-between items-center border border-stone-600">
+                    <span className="text-stone-400">보유 잔액</span>
+                    <span className="text-3xl font-mono text-green-400 font-bold">${money.toLocaleString()}</span>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-6">
+                    {SHOP_ITEMS.map(item => {
+                      const count = inventory[item.id] || 0;
+                      const canAfford = money >= item.price;
+                      return (
+                        <div key={item.id} className="flex items-center justify-between p-4 rounded-xl border-2 transition-colors bg-stone-100 border-[#d2b48c] text-stone-800">
+                          <div className="flex items-center gap-4 text-left">
+                            <span className="text-4xl">{item.icon}</span>
+                            <div>
+                              <h3 className="font-black text-lg text-stone-800">
+                                {item.name} <span className="text-sm font-bold text-blue-600 ml-2">보유: {count}개</span>
+                              </h3>
+                              <p className="text-sm text-stone-500">{item.desc}</p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className="font-mono font-bold text-lg mb-1 text-[#c0392b]">${item.price.toLocaleString()}</span>
+                            <button 
+                              onClick={() => handleBuyItem(item)}
+                              disabled={!canAfford}
+                              className={`px-4 py-2 rounded-lg font-bold shadow-[0_3px_0_rgba(0,0,0,0.2)] active:translate-y-[3px] active:shadow-none transition-all ${
+                                canAfford ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-stone-400 text-white cursor-not-allowed'
+                              }`}
+                            >
+                              구매하기
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button onClick={() => setGameState('menu')} className="w-full bg-orange-500 hover:bg-orange-400 text-white font-bold py-4 rounded-xl shadow-[0_6px_0_#9a3412] active:translate-y-[6px] transition-all text-xl mt-auto shrink-0">
+                    타이틀로 돌아가기
+                  </button>
+                </div>
+
+                {/* 상점 구매 영수증 팝업 모달 */}
+                {purchasedItem && (
+                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl animate-in fade-in zoom-in duration-200 border-8 border-[#d2b48c] max-h-screen overflow-y-auto">
+                      <div className="text-5xl mb-2">🧾</div>
+                      <h2 className="text-2xl font-black mb-2 text-[#5a4a42]">구매 완료</h2>
+                      
+                      <div className="bg-stone-100 p-4 rounded-xl border border-stone-300 mb-6 text-left">
+                        <div className="text-center font-bold border-b border-stone-300 pb-2 mb-2 text-stone-500 text-sm">학민 정부 공식 영수증</div>
+                        <div className="flex items-center justify-between mb-3 mt-4">
+                          <span className="text-4xl">{purchasedItem.icon}</span>
+                          <span className="font-black text-xl text-stone-700">{purchasedItem.name}</span>
+                        </div>
+                        <div className="flex justify-between mb-1 text-sm font-bold text-red-600">
+                          <span>결제 금액:</span>
+                          <span>-${purchasedItem.price.toLocaleString()}</span>
+                        </div>
+                        <hr className="my-2 border-stone-400 border-dashed"/>
+                        <div className="flex justify-between font-black text-lg text-stone-900 mb-2">
+                          <span>거래 후 잔액:</span>
+                          <span>${money.toLocaleString()}</span>
+                        </div>
+                      </div>
+
+                      <button onClick={() => setPurchasedItem(null)} className="w-full bg-[#2ecc71] hover:bg-[#27ae60] text-white font-black py-4 rounded-xl text-xl shadow-[0_4px_0_#1e8449] active:translate-y-[4px] active:shadow-none">
+                        확인
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          if (gameState === 'dayEnd') {
+            return (
+              <div className="h-screen bg-[#2c3e50] flex flex-col items-center justify-center font-sans p-4 text-white">
+                <div className="bg-stone-800 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border-4 border-green-500 animate-in zoom-in duration-500">
+                  <div className="text-6xl mb-4">🌙</div>
+                  <h1 className="text-4xl font-black text-green-400 mb-2">Day {currentDay} 마감!</h1>
+                  <p className="text-stone-300 mb-6 text-lg">성공적으로 장사를 마쳤습니다.</p>
+                  
+                  <div className="bg-stone-700 p-4 rounded-xl mb-8 flex flex-col gap-2">
+                    <div>
+                      <p className="text-stone-400 text-sm">오늘 서빙한 손님</p>
+                      <p className="text-2xl font-bold text-white">{servedToday} 명</p>
+                    </div>
+                    <div>
+                      <p className="text-stone-400 text-sm">현재 보유 잔고</p>
+                      <p className="text-3xl font-mono text-green-400 font-bold">${money.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-3">
+                    {currentDay < 5 ? (
+                      <button onClick={() => startDay(currentDay + 1)} className="w-full bg-green-500 hover:bg-green-400 text-white font-bold py-4 rounded-xl shadow-[0_6px_0_#166534] active:translate-y-[6px] transition-all text-xl">
+                        {currentDay === 1 ? 'Day 2 시작하기' : '다음날도 출근한다'}
+                      </button>
+                    ) : (
+                      <div className="text-yellow-400 font-bold mb-2">축하합니다! 무한 모드에 진입했습니다!</div>
+                    )}
+                    
+                    {currentDay >= 2 && (
+                      <button onClick={() => setGameState('shop')} className="w-full bg-stone-600 hover:bg-stone-500 text-stone-200 font-bold py-4 rounded-xl shadow-[0_6px_0_#44403c] active:translate-y-[6px] transition-all text-xl border-2 border-stone-500">
+                        그만 출근할래요.. (상점 가기)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (gameState === 'gameOver') {
+            return (
+              <div className="h-screen bg-black/90 flex flex-col items-center justify-center font-sans p-4 text-white">
+                <div className="bg-stone-800 p-10 rounded-3xl shadow-2xl max-w-md w-full text-center border-4 border-red-600 animate-in slide-in-from-bottom duration-500">
+                  <div className="text-6xl mb-4">⏳</div>
+                  <h1 className="text-4xl font-black text-red-500 mb-2">영업 종료...</h1>
+                  <p className="text-stone-300 mb-6 text-lg">시간이 다 되었습니다!</p>
+                  <div className="bg-stone-700 p-4 rounded-xl mb-8 flex flex-col gap-2">
+                    <div>
+                      <p className="text-stone-400 text-sm">도달한 일차</p>
+                      <p className="text-xl font-bold text-yellow-400">Day {currentDay}</p>
+                    </div>
+                    <div>
+                      <p className="text-stone-400 text-sm">총 서빙한 손님</p>
+                      <p className="text-2xl font-bold text-white">{totalServed} 명</p>
+                    </div>
+                    <div>
+                      <p className="text-stone-400 text-sm">최종 획득 자산</p>
+                      <p className="text-3xl font-mono font-bold text-green-400">${money.toLocaleString()}</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex flex-col gap-3">
+                    <button onClick={() => setGameState('menu')} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl shadow-[0_4px_0_#7f1d1d] active:translate-y-[4px] transition-all text-lg">
+                      처음부터 다시하기
+                    </button>
+                    {currentDay >= 2 && (
+                      <button onClick={() => setGameState('shop')} className="w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-xl shadow-[0_4px_0_#713f12] active:translate-y-[4px] transition-all text-lg">
+                        수익금 쓰러 가기 (상점)
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          }
+
+          if (!currentOrder) return null;
+
+          return (
+            <div className="h-screen bg-[#2c3e50] font-sans flex flex-col overflow-hidden">
+              <header className="flex-none bg-stone-900 text-white px-4 py-2 shadow-md flex justify-between items-center border-b-4 border-orange-600 z-20">
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <p className="text-[10px] text-stone-400 uppercase tracking-widest">Day</p>
+                    <p className="font-black text-orange-400 text-xl">{currentDay}</p>
+                  </div>
+                  <div className="hidden sm:block border-l border-stone-700 h-8"></div>
+                  <div>
+                    <h1 className="font-bold text-base leading-tight hidden sm:block">피자 타이쿤</h1>
+                    <p className="text-[10px] text-stone-400">약분/통분</p>
+                  </div>
+                </div>
+                
+                {timeLeft !== null && (
+                  <div className={`absolute left-1/2 transform -translate-x-1/2 px-6 py-1 rounded-full border-2 shadow-lg flex items-center gap-2 transition-colors ${timeLeft <= 10 ? 'bg-red-950 border-red-500 animate-pulse' : 'bg-stone-800 border-stone-600'}`}>
+                    <span className="text-lg">⏳</span>
+                    <span className={`font-mono text-2xl font-black ${timeLeft <= 10 ? 'text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'text-white'}`}>
+                      {Math.floor(timeLeft / 60)}:{(timeLeft % 60).toString().padStart(2, '0')}
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-4">
+                  <div className="text-center">
+                    <p className="text-[10px] text-stone-400">목표</p>
+                    <p className="font-bold text-stone-200 text-sm">{servedToday} / {dayConfig.goal === Infinity ? '∞' : dayConfig.goal}</p>
+                  </div>
+                  <div className="bg-stone-800 px-3 py-1 rounded-lg border border-stone-700 flex items-center gap-1">
+                    <span className="text-green-400 font-bold">$</span>
+                    <span className="font-mono text-lg font-bold tracking-wider">{money.toLocaleString()}</span>
+                  </div>
+                </div>
+              </header>
+
+              <main className="flex-1 flex flex-col w-full relative min-h-0">
+                <section className="h-[35%] relative bg-[#f0e6d2] flex items-end justify-center overflow-hidden">
+                  <div className="absolute inset-0 z-0">
+                    <svg width="100%" height="100%" viewBox="0 0 800 300" preserveAspectRatio="xMidYMid slice">
+                      <defs>
+                        <pattern id="brickPattern" x="0" y="0" width="40" height="20" patternUnits="userSpaceOnUse">
+                          <rect x="0" y="0" width="40" height="20" fill="#a94442" stroke="#8a3324" strokeWidth="1" />
+                          <rect x="0" y="0" width="20" height="10" fill="#bd5552" />
+                          <rect x="20" y="10" width="20" height="10" fill="#bd5552" />
+                        </pattern>
+                        <pattern id="tilePattern" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                           <rect x="0" y="0" width="40" height="40" fill="#e0cda7" stroke="#c2a77a" strokeWidth="1" />
+                         </pattern>
+                      </defs>
+                      <rect x="0" y="0" width="100%" height="220" fill="url(#brickPattern)" />
+                      <rect x="10%" y="40" width="150" height="120" fill="#87ceeb" stroke="#5a4a42" strokeWidth="6" />
+                      <rect x="70%" y="40" width="150" height="120" fill="#87ceeb" stroke="#5a4a42" strokeWidth="6" />
+                      <rect x="0" y="220" width="100%" height="100" fill="#d2b48c" />
+                      <rect x="0" y="220" width="100%" height="100" fill="url(#tilePattern)" opacity="0.5"/>
+                    </svg>
+                  </div>
+
+                  <div className="relative z-10 flex flex-row items-end justify-center w-full max-w-4xl mx-auto px-2 pb-2">
+                    <div className="w-48 h-48 sm:w-64 sm:h-64 md:w-72 md:h-72 shrink-0 z-10 mr-4 sm:mr-6 mb-[-10px] sm:mb-[-15px]">
+                      <img src={currentOrder.img} className="w-full h-full object-contain object-bottom drop-shadow-2xl pointer-events-none" alt="손님" />
+                    </div>
+
+                    <div className="bg-[#fff8e7] p-3 sm:p-5 rounded-3xl shadow-lg relative mb-12 sm:mb-20 max-w-[200px] sm:max-w-md text-center border-4 border-[#5a4a42] shrink-0">
+                      <div className="absolute bottom-[30px] sm:bottom-[40px] left-[-24px] w-0 h-0 border-t-[15px] border-t-transparent border-r-[20px] border-r-[#5a4a42] border-b-[15px] border-b-transparent"></div>
+                      <div className="absolute bottom-[33px] sm:bottom-[43px] left-[-18px] w-0 h-0 border-t-[12px] border-t-transparent border-r-[16px] border-r-[#fff8e7] border-b-[12px] border-b-transparent"></div>
+                      
+                      <p className="text-[#5a4a42] text-xs sm:text-base font-bold mb-3 leading-snug whitespace-pre-wrap">{currentOrder.msg}</p>
+                      
+                      <div className="text-lg sm:text-2xl font-bold text-[#5a4a42] flex items-center justify-center flex-wrap gap-1 bg-[#f1e6ce] py-1 sm:py-2 px-2 sm:px-3 rounded-xl border border-[#d2b48c]">
+                        <span className="text-[#c0392b] mr-1">[{PIZZA_NAMES[currentOrder.pizzaType]}]</span>
+                        {currentOrder.fractions.map((f, i) => (
+                          <React.Fragment key={i}>
+                            {i > 0 && <span className="text-sm">과</span>}
+                            <Fraction n={f.n} d={f.d} />
+                            <span>{i === currentOrder.fractions.length - 1 ? '판!' : ''}</span>
+                          </React.Fragment>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </section>
+
+                <section className="h-[65%] bg-[#a07e5e] p-2 sm:p-4 shadow-[inset_0_10px_20px_rgba(0,0,0,0.3)] border-t-[8px] border-[#7a5e46] flex flex-col relative">
+                  <div className="absolute inset-0 opacity-20 mix-blend-multiply" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg viewBox=%220 0 200 200%22 xmlns=%22http://www.w3.org/2000/svg%22%3E%3Cfilter id=%22noiseFilter%22%3E%3CfeTurbulence type=%22fractalNoise%22 baseFrequency=%220.65%22 numOctaves=%223%22 stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect width=%22100%25%22 height=%22100%25%22 filter=%22url(%23noiseFilter)%22/%3E%3C/svg%3E")' }}></div>
+
+                  <div className="max-w-4xl mx-auto w-full h-full flex flex-col z-10 relative gap-2 sm:gap-4">
+                    
+                    <div className="bg-[#f0e6d2] p-2 sm:p-3 rounded-xl shadow-md flex flex-col gap-2 border-4 border-[#d2b48c] shrink-0">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
+                          <label className="font-bold text-[#5a4a42] text-sm whitespace-nowrap min-w-[50px] sm:min-w-[70px]">피자:</label>
+                          <div className="flex gap-1 min-w-max">
+                            <button onClick={() => setSelectedPizza('pepperoni')} disabled={gameState !== 'playing'} className={`px-2 py-1 rounded-lg text-sm font-bold transition-all ${selectedPizza === 'pepperoni' ? 'bg-[#c0392b] text-white shadow-inner' : 'bg-white text-[#c0392b] border-2 border-[#c0392b]'}`}>🍕 페퍼</button>
+                            <button onClick={() => setSelectedPizza('cheese')} disabled={gameState !== 'playing'} className={`px-2 py-1 rounded-lg text-sm font-bold transition-all ${selectedPizza === 'cheese' ? 'bg-[#f39c12] text-white shadow-inner' : 'bg-white text-[#f39c12] border-2 border-[#f39c12]'}`}>🧀 치즈</button>
+                            <button onClick={() => setSelectedPizza('bulgogi')} disabled={gameState !== 'playing'} className={`px-2 py-1 rounded-lg text-sm font-bold transition-all ${selectedPizza === 'bulgogi' ? 'bg-[#5c4033] text-white shadow-inner' : 'bg-white text-[#5c4033] border-2 border-[#5c4033]'}`}>🥩 불고기</button>
+                          </div>
+                        </div>
+
+                        {dayConfig.useDrink && (
+                          <div className="flex items-center gap-2 overflow-x-auto">
+                            <label className="font-bold text-[#5a4a42] text-sm whitespace-nowrap min-w-[50px] sm:min-w-[70px]">음료:</label>
+                            <div className="flex gap-1 min-w-max">
+                              <button onClick={() => setSelectedDrink('none')} disabled={gameState !== 'playing'} className={`px-2 py-1 rounded-lg text-sm font-bold transition-all ${selectedDrink === 'none' ? 'bg-stone-500 text-white shadow-inner' : 'bg-white text-stone-500 border-2 border-stone-500'}`}>🚫 없음</button>
+                              <button onClick={() => setSelectedDrink('cola')} disabled={gameState !== 'playing'} className={`px-2 py-1 rounded-lg text-sm font-bold transition-all ${selectedDrink === 'cola' ? 'bg-red-900 text-white shadow-inner' : 'bg-white text-red-900 border-2 border-red-900'}`}>🥤 콜라</button>
+                              <button onClick={() => setSelectedDrink('cider')} disabled={gameState !== 'playing'} className={`px-2 py-1 rounded-lg text-sm font-bold transition-all ${selectedDrink === 'cider' ? 'bg-green-500 text-white shadow-inner' : 'bg-white text-green-500 border-2 border-green-500'}`}>🥤 사이다</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <hr className="border-[#d2b48c] border-t-2 my-1" />
+
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
+                        <div className="flex items-center gap-2 flex-1 w-full sm:max-w-md">
+                          <label className="font-bold text-[#5a4a42] text-sm min-w-[50px] sm:min-w-[70px]">자르기:</label>
+                          <div className="flex items-center gap-2 bg-white rounded-xl border-4 border-[#d2b48c] p-1 flex-1">
+                            <button onClick={() => handleSliceChange(cutSlices - 1)} disabled={gameState !== 'playing' || cutSlices <= 1} className="w-8 h-8 flex justify-center items-center bg-stone-100 hover:bg-stone-200 rounded-lg font-black text-xl text-[#5a4a42] disabled:opacity-50 active:scale-95 transition-transform">-</button>
+                            <input type="range" min="1" max="36" value={cutSlices} onChange={e => handleSliceChange(e.target.value)} className="flex-1 accent-[#e67e22] h-2 bg-stone-200 rounded-lg appearance-none cursor-pointer" disabled={gameState !== 'playing'} />
+                            <button onClick={() => handleSliceChange(cutSlices + 1)} disabled={gameState !== 'playing' || cutSlices >= 36} className="w-8 h-8 flex justify-center items-center bg-stone-100 hover:bg-stone-200 rounded-lg font-black text-xl text-[#5a4a42] disabled:opacity-50 active:scale-95 transition-transform">+</button>
+                          </div>
+                          <span className="font-black text-[#d35400] text-xl w-10 text-center">{cutSlices}</span>
+                        </div>
+                        <button onClick={resetPizza} disabled={gameState !== 'playing'} className="text-[#5a4a42] text-xs hover:text-[#d35400] underline font-bold shrink-0 self-end sm:self-auto">도마 비우기</button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex items-center justify-around relative min-h-0 pt-4">
+                      <div className="relative transform scale-90 sm:scale-100 shrink-0 flex items-center justify-center">
+                        <svg width="220" height="220" viewBox="0 0 240 240" className="absolute drop-shadow-xl">
+                          <circle cx="120" cy="120" r="115" fill="#cba479" stroke="#a07e5e" strokeWidth="6" />
+                          <circle cx="120" cy="120" r="105" fill="none" stroke="#b8936a" strokeWidth="3" strokeDasharray="12,6" />
+                        </svg>
+                        <svg width="200" height="200" viewBox="0 0 200 200" className="relative z-10">
+                          {renderPizzaSlices(false)}
+                        </svg>
+                      </div>
+
+                      <div className="text-4xl text-[#f0e6d2] opacity-70 font-black animate-pulse hidden md:block">➔</div>
+
+                      <div className="relative drop-shadow-xl transform scale-90 sm:scale-100 shrink-0 flex flex-col items-center justify-center">
+                        <div className="relative">
+                          <PizzaBox />
+                          <svg width="180" height="180" viewBox="0 0 200 200" className="absolute top-0 left-0">
+                            {renderPizzaSlices(true)}
+                          </svg>
+                          <DrinkVisual type={selectedDrink} />
+                        </div>
+                        
+                        <button onClick={handleServe} disabled={gameState !== 'playing' || (selectedIndices.size === 0 && selectedDrink === 'none')} className={`absolute -bottom-6 w-[110%] py-4 rounded-xl font-black text-xl shadow-[0_5px_0_rgba(0,0,0,0.3)] transition-transform ${selectedIndices.size > 0 || selectedDrink !== 'none' ? 'bg-[#2ecc71] text-white active:translate-y-[5px] active:shadow-none' : 'bg-[#95a5a6] text-white opacity-50'}`}>
+                          서빙하기!
+                        </button>
+                      </div>
+
+                      <div className="absolute bottom-0 left-2 sm:left-6 opacity-90 flex flex-col items-center pointer-events-none">
+                        <TrashCan isAnimating={trashAnimating} />
+                      </div>
+                    </div>
+                  </div>
+                </section>
+              </main>
+
+              {gameState === 'feedback' && feedback && (
+                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+                  <div className="bg-white rounded-3xl p-6 sm:p-8 max-w-sm w-full text-center shadow-2xl animate-in fade-in zoom-in duration-200 border-8 border-[#d2b48c] max-h-screen overflow-y-auto">
+                    <div className={`text-5xl mb-2 ${feedback.success ? (feedback.optimal ? 'text-green-500' : 'text-orange-500') : 'text-red-500'}`}>
+                      {feedback.success ? (feedback.optimal ? '🎉' : '😅') : '❌'}
+                    </div>
+                    <h2 className="text-2xl font-black mb-2 text-[#5a4a42]">{feedback.title}</h2>
+                    <p className="text-[#5a4a42] text-sm mb-4 font-bold leading-relaxed bg-[#f0e6d2] p-3 rounded-xl border-2 border-[#d2b48c] whitespace-pre-wrap">
+                      {feedback.desc}
+                    </p>
+
+                    {!feedback.success && feedback.penaltyValue && (
+                      <div className="bg-red-50 p-4 rounded-xl border border-red-300 mb-6 text-left">
+                         <div className="flex justify-between font-black text-red-700 text-lg">
+                            <span>주문 실수 패널티:</span>
+                            <span>-${feedback.penaltyValue}</span>
+                         </div>
+                      </div>
+                    )}
+                    
+                    {feedback.success && feedback.receipt && (
+                      <div className="bg-stone-100 p-4 rounded-xl border border-stone-300 mb-6 text-left">
+                        <div className="text-center font-bold border-b border-stone-300 pb-2 mb-2 text-stone-500 text-sm">결제 영수증</div>
+                        <div className="flex justify-between mb-1 text-stone-700 font-bold text-sm">
+                          <span>음식값 (피자+음료):</span>
+                          <span>${feedback.receipt.basePrice}</span>
+                        </div>
+                        <div className={`flex justify-between text-sm font-bold ${feedback.receipt.tip >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          <span>{feedback.receipt.tip >= 0 ? '센스 팁 (기약분수)' : '패널티 (낭비된 조각)'}:</span>
+                          <span>{feedback.receipt.tip > 0 ? '+' : ''}${feedback.receipt.tip}</span>
+                        </div>
+                        <hr className="my-2 border-stone-400 border-dashed"/>
+                        <div className="flex justify-between font-black text-xl text-stone-900 mb-2">
+                          <span>총 획득금:</span>
+                          <span>${feedback.receipt.totalEarned}</span>
+                        </div>
+                        {feedback.receipt.addedTime > 0 && (
+                          <div className="text-center text-xs font-bold text-blue-600 bg-blue-100 py-1 rounded">
+                            ⏰ 시간 보너스 +{feedback.receipt.addedTime}초!
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3">
+                      {!feedback.success ? (
+                        <button onClick={() => setGameState('playing')} className="flex-1 bg-[#c0392b] text-white font-black py-3 rounded-xl shadow-[0_4px_0_#7e221c] active:translate-y-[4px]">
+                          다시 확인하기
+                        </button>
+                      ) : (
+                        <button onClick={nextOrderOrDay} className="flex-1 bg-[#2ecc71] text-white font-black py-3 rounded-xl shadow-[0_4px_0_#1e8449] active:translate-y-[4px]">
+                          다음 손님 받기
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
