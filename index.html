@@ -49,8 +49,22 @@
     <script type="text/babel">
         const { useState, useEffect, useRef } = React;
 
-        // --- 유틸리티 함수 ---
+        // --- 유틸리티 함수 (수학 로직) ---
         const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+        const lcm = (a, b) => (a * b) / gcd(a, b);
+
+        // 분수의 합을 계산하여 가장 이상적인(기약분수 형태의) 분모를 도출하는 함수
+        // 억울한 패널티를 방지하기 위해 동적으로 계산합니다!
+        const calculateOptimalD = (fractions) => {
+            let num = 0;
+            let den = 1;
+            for (let f of fractions) {
+                let commonDen = lcm(den, f.d);
+                num = num * (commonDen / den) + f.n * (commonDen / f.d);
+                den = commonDen;
+            }
+            return den / gcd(num, den);
+        };
 
         // 분수 컴포넌트
         const Fraction = ({ n, d }) => (
@@ -69,16 +83,17 @@
         // --- 상점 아이템 ---
         const SHOP_ITEMS = [
           { id: 'exp', name: "경험치 보상", price: 500, icon: "✨", desc: "1개당 500 달러 (반복 구매 가능)" },
-          { id: 'silver', name: "은화", price: 3000, icon: "🪙", desc: "반짝이는 은화 (반복 구매 가능)" }
+          { id: 'silver', name: "은화", price: 3000, icon: "🪙", desc: "구매할 때마다 가격이 2배씩 오릅니다!" }
         ];
 
-        // --- 5일차 시스템 설정 ---
+        // --- 5일차 시스템 설정 (난이도 상승 반영) ---
         const DAY_CONFIGS = [
-          { day: 1, goal: 6, initialTime: null, timeBonus: 0, useDrink: false, mathTier: 'tier1' },
-          { day: 2, goal: 6, initialTime: 30, timeBonus: 15, useDrink: false, mathTier: 'tier1' },
-          { day: 3, goal: 10, initialTime: 80, timeBonus: 15, useDrink: true, mathTier: 'tier2' },
-          { day: 4, goal: 10, initialTime: 90, timeBonus: 20, useDrink: true, mathTier: 'tier3' },
-          { day: 5, goal: Infinity, initialTime: 60, timeBonus: 5, useDrink: true, mathTier: 'all' },
+          { day: 1, goal: 6, initialTime: null, timeBonus: 0, timePenalty: 0, useDrink: false, mathTier: 'tier1' },
+          { day: 2, goal: 6, initialTime: 30, timeBonus: 15, timePenalty: 5, useDrink: false, mathTier: 'tier1' },
+          { day: 3, goal: 10, initialTime: 80, timeBonus: 15, timePenalty: 5, useDrink: true, mathTier: 'tier2' },
+          { day: 4, goal: 10, initialTime: 90, timeBonus: 20, timePenalty: 10, useDrink: true, mathTier: 'tier3' },
+          // 지옥의 5일차: 시간 보너스는 줄고, 실수 시 타임 패널티(-15초)가 강력합니다!
+          { day: 5, goal: Infinity, initialTime: 40, timeBonus: 4, timePenalty: 15, useDrink: true, mathTier: 'all' },
         ];
 
         // --- 손님 데이터 (17종) ---
@@ -102,22 +117,23 @@
           { img: "https://i.imgur.com/yMeElZ0.png", msg: "어.. 피자.. 네.. 주세요.. ㅋㅋㅋ.." }
         ];
 
-        // --- 난이도별 수학 문제 풀 ---
+        // --- 난이도별 수학 문제 풀 (optimalD는 이제 동적 계산되므로 명시할 필요 없습니다) ---
         const MATH_POOLS = {
           tier1: [ 
-            { fractions: [{n: 2, d: 4}], optimalD: 2 }, { fractions: [{n: 4, d: 12}], optimalD: 3 },
-            { fractions: [{n: 6, d: 8}], optimalD: 4 }, { fractions: [{n: 3, d: 9}], optimalD: 3 },
-            { fractions: [{n: 4, d: 6}], optimalD: 3 }, { fractions: [{n: 8, d: 16}], optimalD: 2 },
+            { fractions: [{n: 2, d: 4}] }, { fractions: [{n: 4, d: 12}] },
+            { fractions: [{n: 6, d: 8}] }, { fractions: [{n: 3, d: 9}] },
+            { fractions: [{n: 4, d: 6}] }, { fractions: [{n: 8, d: 16}] },
           ],
           tier2: [ 
-            { fractions: [{n: 1, d: 2}, {n: 1, d: 4}], optimalD: 4 }, { fractions: [{n: 1, d: 3}, {n: 2, d: 6}], optimalD: 6 },
-            { fractions: [{n: 1, d: 2}, {n: 1, d: 6}], optimalD: 6 }, { fractions: [{n: 1, d: 5}, {n: 3, d: 10}], optimalD: 2 },
-            { fractions: [{n: 6, d: 18}], optimalD: 3 }, 
+            { fractions: [{n: 1, d: 2}, {n: 1, d: 4}] }, { fractions: [{n: 1, d: 3}, {n: 2, d: 6}] },
+            { fractions: [{n: 1, d: 2}, {n: 1, d: 6}] }, { fractions: [{n: 1, d: 5}, {n: 3, d: 10}] },
+            { fractions: [{n: 6, d: 18}] }, 
           ],
           tier3: [ 
-            { fractions: [{n: 1, d: 2}, {n: 1, d: 3}], optimalD: 6 }, { fractions: [{n: 1, d: 4}, {n: 1, d: 3}], optimalD: 12 },
-            { fractions: [{n: 2, d: 3}, {n: 1, d: 6}], optimalD: 6 }, { fractions: [{n: 1, d: 2}, {n: 2, d: 5}], optimalD: 10 },
-            { fractions: [{n: 3, d: 8}, {n: 1, d: 6}], optimalD: 24 },
+            { fractions: [{n: 1, d: 2}, {n: 1, d: 3}] }, { fractions: [{n: 1, d: 4}, {n: 1, d: 3}] },
+            { fractions: [{n: 2, d: 3}, {n: 1, d: 6}] }, { fractions: [{n: 1, d: 2}, {n: 2, d: 5}] },
+            { fractions: [{n: 3, d: 8}, {n: 1, d: 6}] }, { fractions: [{n: 1, d: 4}, {n: 1, d: 6}] },
+            { fractions: [{n: 1, d: 4}, {n: 2, d: 6}] }
           ]
         };
 
@@ -153,7 +169,8 @@
             pizzaType: randomPizza,
             drinkType: drinkType,
             fractions: randomMath.fractions,
-            optimalD: randomMath.optimalD
+            // 동적으로 완벽한 분모(기약분수/최소공배수)를 계산해서 저장! (억울한 패널티 방지)
+            optimalD: calculateOptimalD(randomMath.fractions)
           };
         };
 
@@ -305,16 +322,24 @@
             setSelectedIndices(newSet);
           };
 
-          // 공통 패널티 처리 함수 (일차 수 * 10 만큼 패널티 스케일링)
+          // 공통 패널티 처리 함수 (일차 수 * 10 만큼 패널티 스케일링, 타임 패널티 동시 적용)
           const currentPenalty = currentDay * 10;
           
           const triggerPenalty = (title, desc) => {
             setMoney(m => m - currentPenalty);
+            
+            let subtractedTime = 0;
+            if (timeLeft !== null && dayConfig.timePenalty > 0) {
+                subtractedTime = dayConfig.timePenalty;
+                setTimeLeft(prev => Math.max(prev - subtractedTime, 1)); // 0이하로 떨어져 바로 죽지 않게 1초는 남겨둠
+            }
+
             setFeedback({
               success: false,
               title,
               desc,
-              penaltyValue: currentPenalty
+              penaltyValue: currentPenalty,
+              timePenalty: subtractedTime
             });
             setGameState('feedback');
           };
@@ -358,7 +383,7 @@
               return;
             }
 
-            // 성공 처리
+            // 성공 처리 (동적 계산된 optimalD를 기반으로 검사)
             const isOptimal = cutSlices === currentOrder.optimalD;
             const wasted = cutSlices - selectedIndices.size;
             
@@ -401,11 +426,11 @@
             }, 800);
           };
 
-          const handleBuyItem = (item) => {
-            if (money >= item.price) {
-              setMoney(m => m - item.price);
+          const handleBuyItem = (item, currentPrice) => {
+            if (money >= currentPrice) {
+              setMoney(m => m - currentPrice);
               setInventory(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }));
-              setPurchasedItem(item);
+              setPurchasedItem({ ...item, currentPrice });
             }
           };
 
@@ -490,9 +515,9 @@
                       <li>• <span className="text-yellow-300">2일차</span>: <span className="text-red-400">타이머 등장!</span></li>
                       <li>• <span className="text-yellow-300">3일차</span>: <span className="text-blue-300">음료 추가</span> & 쉬운 통분</li>
                       <li>• <span className="text-yellow-300">4일차</span>: 본격적인 통분 미션</li>
-                      <li>• <span className="text-yellow-300">5일차</span>: 무한 모드 (버티기)</li>
+                      <li>• <span className="text-yellow-300">5일차</span>: 무한 모드 (지옥의 타임어택)</li>
                     </ul>
-                    <p className="text-xs text-stone-400 text-red-300 mt-2">오주문 시 라운드에 비례한 패널티(-$10 ~ -$50) 발생! 주의하세요!</p>
+                    <p className="text-xs text-stone-400 text-red-300 mt-2">오주문 시 라운드에 비례한 벌금(-$10~-$50) 및 타임 패널티 발생!</p>
                   </div>
                   <button onClick={startGame} className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-4 rounded-xl shadow-[0_6px_0_#9a3412] active:translate-y-[6px] transition-all text-xl">
                     가게 오픈하기
@@ -518,7 +543,9 @@
                   <div className="flex-1 overflow-y-auto space-y-3 pr-2 mb-6">
                     {SHOP_ITEMS.map(item => {
                       const count = inventory[item.id] || 0;
-                      const canAfford = money >= item.price;
+                      // 은화는 보유 개수에 따라 가격 2배씩 증가
+                      const currentPrice = item.id === 'silver' ? item.price * Math.pow(2, count) : item.price;
+                      const canAfford = money >= currentPrice;
                       return (
                         <div key={item.id} className="flex items-center justify-between p-4 rounded-xl border-2 transition-colors bg-stone-100 border-[#d2b48c] text-stone-800">
                           <div className="flex items-center gap-4 text-left">
@@ -531,9 +558,9 @@
                             </div>
                           </div>
                           <div className="flex flex-col items-end">
-                            <span className="font-mono font-bold text-lg mb-1 text-[#c0392b]">${item.price.toLocaleString()}</span>
+                            <span className="font-mono font-bold text-lg mb-1 text-[#c0392b]">${currentPrice.toLocaleString()}</span>
                             <button 
-                              onClick={() => handleBuyItem(item)}
+                              onClick={() => handleBuyItem(item, currentPrice)}
                               disabled={!canAfford}
                               className={`px-4 py-2 rounded-lg font-bold shadow-[0_3px_0_rgba(0,0,0,0.2)] active:translate-y-[3px] active:shadow-none transition-all ${
                                 canAfford ? 'bg-green-500 hover:bg-green-400 text-white' : 'bg-stone-400 text-white cursor-not-allowed'
@@ -567,7 +594,7 @@
                         </div>
                         <div className="flex justify-between mb-1 text-sm font-bold text-red-600">
                           <span>결제 금액:</span>
-                          <span>-${purchasedItem.price.toLocaleString()}</span>
+                          <span>-${purchasedItem.currentPrice.toLocaleString()}</span>
                         </div>
                         <hr className="my-2 border-stone-400 border-dashed"/>
                         <div className="flex justify-between font-black text-lg text-stone-900 mb-2">
@@ -839,10 +866,16 @@
 
                     {!feedback.success && feedback.penaltyValue && (
                       <div className="bg-red-50 p-4 rounded-xl border border-red-300 mb-6 text-left">
-                         <div className="flex justify-between font-black text-red-700 text-lg">
-                            <span>주문 실수 패널티:</span>
+                         <div className="flex justify-between font-black text-red-700 text-lg mb-1">
+                            <span>주문 실수 벌금:</span>
                             <span>-${feedback.penaltyValue}</span>
                          </div>
+                         {feedback.timePenalty > 0 && (
+                             <div className="flex justify-between font-black text-red-600 text-sm">
+                                <span>시간 단축 패널티:</span>
+                                <span>-{feedback.timePenalty}초</span>
+                             </div>
+                         )}
                       </div>
                     )}
                     
