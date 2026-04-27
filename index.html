@@ -54,7 +54,6 @@
         const lcm = (a, b) => (a * b) / gcd(a, b);
 
         // 분수의 합을 계산하여 가장 이상적인(기약분수 형태의) 분모를 도출하는 함수
-        // 억울한 패널티를 방지하기 위해 동적으로 계산합니다!
         const calculateOptimalD = (fractions) => {
             let num = 0;
             let den = 1;
@@ -92,7 +91,6 @@
           { day: 2, goal: 6, initialTime: 30, timeBonus: 15, timePenalty: 5, useDrink: false, mathTier: 'tier1' },
           { day: 3, goal: 10, initialTime: 80, timeBonus: 15, timePenalty: 5, useDrink: true, mathTier: 'tier2' },
           { day: 4, goal: 10, initialTime: 90, timeBonus: 20, timePenalty: 10, useDrink: true, mathTier: 'tier3' },
-          // 지옥의 5일차: 시간 보너스는 줄고, 실수 시 타임 패널티(-15초)가 강력합니다!
           { day: 5, goal: Infinity, initialTime: 40, timeBonus: 4, timePenalty: 15, useDrink: true, mathTier: 'all' },
         ];
 
@@ -117,7 +115,6 @@
           { img: "https://i.imgur.com/yMeElZ0.png", msg: "어.. 피자.. 네.. 주세요.. ㅋㅋㅋ.." }
         ];
 
-        // --- 난이도별 수학 문제 풀 (optimalD는 이제 동적 계산되므로 명시할 필요 없습니다) ---
         const MATH_POOLS = {
           tier1: [ 
             { fractions: [{n: 2, d: 4}] }, { fractions: [{n: 4, d: 12}] },
@@ -169,7 +166,6 @@
             pizzaType: randomPizza,
             drinkType: drinkType,
             fractions: randomMath.fractions,
-            // 동적으로 완벽한 분모(기약분수/최소공배수)를 계산해서 저장! (억울한 패널티 방지)
             optimalD: calculateOptimalD(randomMath.fractions)
           };
         };
@@ -266,6 +262,7 @@
           };
 
           const startDay = (dayNum) => {
+            if (gameState === 'playing') return; // 연타 방지
             const config = DAY_CONFIGS[dayNum - 1] || DAY_CONFIGS[DAY_CONFIGS.length - 1];
             setCurrentDay(dayNum);
             setServedToday(0);
@@ -277,6 +274,7 @@
           };
 
           const nextOrderOrDay = () => {
+            if (gameState !== 'feedback') return; // 연타 방지
             const config = DAY_CONFIGS[currentDay - 1];
             const newServedToday = servedToday + 1;
             setServedToday(newServedToday);
@@ -322,7 +320,7 @@
             setSelectedIndices(newSet);
           };
 
-          // 공통 패널티 처리 함수 (일차 수 * 10 만큼 패널티 스케일링, 타임 패널티 동시 적용)
+          // 공통 패널티 처리 함수
           const currentPenalty = currentDay * 10;
           
           const triggerPenalty = (title, desc) => {
@@ -331,7 +329,7 @@
             let subtractedTime = 0;
             if (timeLeft !== null && dayConfig.timePenalty > 0) {
                 subtractedTime = dayConfig.timePenalty;
-                setTimeLeft(prev => Math.max(prev - subtractedTime, 1)); // 0이하로 떨어져 바로 죽지 않게 1초는 남겨둠
+                setTimeLeft(prev => Math.max(prev - subtractedTime, 1)); 
             }
 
             setFeedback({
@@ -345,10 +343,14 @@
           };
 
           const handleServe = () => {
+            if (gameState !== 'playing') return; // 핵심: 버튼 연타 중복 방지
+
             if (selectedIndices.size === 0) {
               alert("최소 한 조각은 상자에 담아야 합니다!");
               return;
             }
+
+            setGameState('processing'); // UI 입력을 즉시 차단
 
             // 1. 음료 틀림 패널티
             if (dayConfig.useDrink && selectedDrink !== currentOrder.drinkType) {
@@ -403,16 +405,17 @@
 
             if (wasted > 0) setTrashAnimating(true);
 
-            let addedTime = 0;
-            if (timeLeft !== null) {
-              addedTime = dayConfig.timeBonus;
-              setTimeLeft(prev => Math.min(prev + addedTime, 180)); 
-            }
-
+            // 시간과 돈 계산을 setTimeout 내부로 이관하여 중복 및 연타 완전 차단
             setTimeout(() => {
               setTrashAnimating(false);
               setMoney(m => m + totalEarned);
               
+              let addedTime = 0;
+              if (timeLeft !== null) {
+                addedTime = dayConfig.timeBonus;
+                setTimeLeft(prev => Math.min(prev + addedTime, 180)); 
+              }
+
               setFeedback({
                 success: true,
                 optimal: isOptimal,
@@ -427,11 +430,16 @@
           };
 
           const handleBuyItem = (item, currentPrice) => {
-            if (money >= currentPrice) {
-              setMoney(m => m - currentPrice);
-              setInventory(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }));
-              setPurchasedItem({ ...item, currentPrice });
-            }
+            if (purchasedItem) return; // 모달이 떠있는 동안 연타 방지
+            
+            setMoney(prevMoney => {
+              if (prevMoney >= currentPrice) {
+                setInventory(prev => ({ ...prev, [item.id]: (prev[item.id] || 0) + 1 }));
+                setPurchasedItem({ ...item, currentPrice });
+                return prevMoney - currentPrice;
+              }
+              return prevMoney;
+            });
           };
 
           const renderPizzaSlices = (isBox) => {
